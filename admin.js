@@ -1,185 +1,158 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('adminLoginForm');
-    const loginContainer = document.getElementById('loginFormContainer');
-    const dashboardContainer = document.getElementById('dashboardContainer');
-    const errorMsg = document.getElementById('errorMessage');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const searchInput = document.getElementById('searchInput');
-    const genderFilter = document.getElementById('genderFilter');
+// 1. Initialize Supabase Client
+const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_MkLb7iKW7LLv5zfrQqgRSA_Mj-C1BbH";
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Simple Admin Credentials
-    const ADMIN_USER = 'ashvin';
-    const ADMIN_PASS = '4545';
+// Credentials for Admin Portal
+const ADMIN_USERNAME = "admin";
+const ADMIN_PASSWORD = "admin123";
 
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        const user = document.getElementById('username').value.trim().toLowerCase();
-        const pass = document.getElementById('password').value.trim();
+// 2. DOM Elements
+const loginFormContainer = document.getElementById('loginFormContainer');
+const adminLoginForm = document.getElementById('adminLoginForm');
+const dashboardContainer = document.getElementById('dashboardContainer');
+const errorMessage = document.getElementById('errorMessage');
+const logoutBtn = document.getElementById('logoutBtn');
+const tableBody = document.getElementById('tableBody');
+const searchInput = document.getElementById('searchInput');
+const genderFilter = document.getElementById('genderFilter');
 
-        if (user === ADMIN_USER && pass === ADMIN_PASS) {
-            loginContainer.classList.add('hidden');
-            dashboardContainer.classList.remove('hidden');
-            fetchDataLocal();
-        } else {
-            errorMsg.textContent = 'Invalid credentials. Try ashvin / 4545';
-        }
-    });
+// Global array to hold fetched registrations for search/filter operations
+let allRegistrations = [];
 
-    searchInput.addEventListener('input', fetchDataLocal);
-    genderFilter.addEventListener('change', fetchDataLocal);
-
-    logoutBtn.addEventListener('click', () => {
-        dashboardContainer.classList.add('hidden');
-        loginContainer.classList.remove('hidden');
-        loginForm.reset();
-        errorMsg.textContent = '';
-        searchInput.value = '';
-        genderFilter.value = 'all';
-    });
+// 3. Handle Admin Session (keeps you logged in if you refresh)
+window.addEventListener('DOMContentLoaded', () => {
+    const isLoggedIn = sessionStorage.getItem('adminLoggedIn');
+    if (isLoggedIn === 'true') {
+        showDashboard();
+    }
 });
 
-let localAdminData = [];
+// 4. Handle Login
+adminLoginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const usernameInput = document.getElementById('username').value;
+    const passwordInput = document.getElementById('password').value;
 
-function fetchDataLocal() {
-    const tableBody = document.getElementById('tableBody');
-    const searchInput = document.getElementById('searchInput');
-    const genderFilter = document.getElementById('genderFilter');
-    
-    // Read directly from Local Storage
-    const savedData = localStorage.getItem('form_data_entries');
-    let allData = [];
-    if (savedData) {
-        allData = JSON.parse(savedData);
+    if (usernameInput === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
+        sessionStorage.setItem('adminLoggedIn', 'true');
+        errorMessage.textContent = '';
+        showDashboard();
+    } else {
+        errorMessage.textContent = 'Invalid username or password.';
     }
+});
 
-    // DEDUPLICATION: Ensure no duplicates are shown or exported (Phone-Based)
-    const map = new Map();
-    allData.forEach(entry => {
-        const phone = (entry.phone || '').trim();
-        if (!phone) return;
-        
-        if (!map.has(phone)) {
-            map.set(phone, entry);
-        } else {
-            const existing = map.get(phone);
-            const currentScore = Object.values(entry).filter(v => v && v !== '-').length;
-            const existingScore = Object.values(existing).filter(v => v && v !== '-').length;
-            if (currentScore >= existingScore) {
-                map.set(phone, entry);
-            }
-        }
-    });
-    
-    const uniqueData = Array.from(map.values());
-    
-    // Update local storage if we found duplicates
-    if (uniqueData.length !== allData.length) {
-        localStorage.setItem('form_data_entries', JSON.stringify(uniqueData));
-        allData = uniqueData;
-    }
+// 5. Show Dashboard & Fetch Data
+async function showDashboard() {
+    loginFormContainer.classList.add('hidden');
+    dashboardContainer.classList.remove('hidden');
+    await fetchRegistrations();
+}
 
-    const searchTerm = (searchInput?.value || '').toLowerCase().trim();
-    const filterValue = genderFilter?.value || 'all';
+// 6. Fetch Data from Supabase
+async function fetchRegistrations() {
+    const { data, error } = await supabase
+        .from('Registration') // Replace with your exact table name in Supabase
+        .select('*')
+        .order('created_at', { ascending: false }); // Show newest first
 
-    localAdminData = allData.filter(entry => {
-        const matchesSearch = 
-            (entry.fullName || '').toLowerCase().includes(searchTerm) || 
-            (entry.phone || '').includes(searchTerm);
-        
-        const matchesFilter = 
-            filterValue === 'all' || 
-            (entry.gender || '').toLowerCase() === filterValue;
-
-        return matchesSearch && matchesFilter;
-    });
-
-    if (localAdminData.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">${allData.length === 0 ? 'No submissions found.' : 'No matching results found.'}</td></tr>`;
+    if (error) {
+        console.error('Error fetching registrations:', error);
+        alert('Failed to load registrations.');
         return;
     }
 
+    allRegistrations = data;
+    renderTable(allRegistrations);
+}
+
+// 7. Render Data into HTML Table
+function renderTable(dataList) {
     tableBody.innerHTML = '';
-    localAdminData.forEach((entry, index) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${entry.fullName || '-'}</td>
-            <td>${entry.fatherName || '-'}</td>
-            <td>${entry.age || '-'}</td>
-            <td>${entry.dob || '-'}</td>
-            <td>${entry.gender || '-'}</td>
-            <td>${entry.phone || '-'}</td>
-            <td>${entry.timestamp || '-'}</td>
-        `;
-        tableBody.appendChild(tr);
-    });
-}
-
-function exportFormDataToExcel() {
-    // FORCE RELOAD DATA FROM STORAGE RIGHT BEFORE EXPORT
-    const savedData = localStorage.getItem('form_data_entries');
-    if (savedData) {
-        localAdminData = JSON.parse(savedData);
-    }
-
-    if (localAdminData.length === 0) {
-        alert("No data found in database to export.");
+    
+    if (dataList.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No records found.</td></tr>`;
         return;
     }
 
-    const formatEntry = (entry, index) => ({
-        "ID": index + 1,
-        "Full Name": entry.fullName || "N/A",
-        "Father's Name": entry.fatherName || "N/A",
-        "Age": entry.age || "N/A",
-        "Date of Birth": entry.dob || "N/A",
-        "Gender": entry.gender || "N/A",
-        "Phone": entry.phone || "N/A",
-        "Submitted At": entry.timestamp || "N/A"
+    dataList.forEach((row, index) => {
+        // Formating the submission date
+        const submissionDate = row.created_at 
+            ? new Date(row.created_at).toLocaleString() 
+            : 'N/A';
+
+        const tableRow = `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${row.full_name}</td>
+                <td>${row.fathers_name}</td>
+                <td>${row.age}</td>
+                <td class="capitalize">${row.date_of_birth}</td>
+                <td class="capitalize">${row.gender}</td>
+                <td>${row.phone_number}</td>
+                <td>${submissionDate}</td>
+            </tr>
+        `;
+        tableBody.innerHTML += tableRow;
+    });
+}
+
+// 8. Search and Filter Functionality
+function filterAndSearchData() {
+    const searchQuery = searchInput.value.toLowerCase();
+    const selectedGender = genderFilter.value;
+
+    const filtered = allRegistrations.filter(row => {
+        const matchesSearch = 
+            row.full_name.toLowerCase().includes(searchQuery) || 
+            row.phone_number.includes(searchQuery);
+
+        const matchesGender = 
+            selectedGender === 'all' || 
+            row.gender.toLowerCase() === selectedGender.toLowerCase();
+
+        return matchesSearch && matchesGender;
     });
 
-    const isMale = (g) => {
-        if (!g) return false;
-        const s = String(g).trim().toLowerCase();
-        return s === 'male' || s === 'm' || s === 'boy';
-    };
-
-    const isFemale = (g) => {
-        if (!g) return false;
-        const s = String(g).trim().toLowerCase();
-        return s === 'female' || s === 'f' || s === 'girl';
-    };
-
-    const boysRows = localAdminData.filter(e => isMale(e.gender)).map((e, index) => [
-        index + 1, e.fullName || "N/A", e.fatherName || "N/A", e.age || "N/A", e.dob || "N/A", e.gender || "N/A", e.phone || "N/A", e.timestamp || "N/A"
-    ]);
-    
-    const girlsRows = localAdminData.filter(e => isFemale(e.gender)).map((e, index) => [
-        index + 1, e.fullName || "N/A", e.fatherName || "N/A", e.age || "N/A", e.dob || "N/A", e.gender || "N/A", e.phone || "N/A", e.timestamp || "N/A"
-    ]);
-
-    const headers = ["ID", "Full Name", "Father's Name", "Age", "Date of Birth", "Gender", "Phone", "Submitted At"];
-    
-    // Combine into one sequence of rows
-    const finalData = [
-        ["FORM SUBMISSION REPORT - GENDER SPLIT"],
-        [],
-        ["BOYS / MALE DATA"],
-        headers,
-        ...boysRows,
-        [],
-        ["GIRLS / FEMALE DATA"],
-        headers,
-        ...girlsRows
-    ];
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(finalData);
-    XLSX.utils.book_append_sheet(wb, ws, "Gender Split Data");
-
-    // Auto-fit columns (small improvement)
-    ws['!cols'] = [{wch:5}, {wch:25}, {wch:25}, {wch:10}, {wch:15}, {wch:15}, {wch:20}, {wch:25}];
-
-    XLSX.writeFile(wb, "Gender_Split_Report.xlsx");
+    renderTable(filtered);
 }
+
+searchInput.addEventListener('input', filterAndSearchData);
+genderFilter.addEventListener('change', filterAndSearchData);
+
+// 9. Export to Excel using SheetJS
+window.exportFormDataToExcel = function() {
+    if (allRegistrations.length === 0) {
+        alert("No data available to export.");
+        return;
+    }
+
+    // Format data specifically for Excel sheet columns
+    const excelData = allRegistrations.map((row, index) => ({
+        "Serial No.": index + 1,
+        "Full Name": row.full_name,
+        "Father's Name": row.fathers_name,
+        "Age": row.age,
+        "Date of Birth": row.date_of_birth,
+        "Gender": row.gender,
+        "Phone Number": row.phone_number,
+        "Submitted At": row.created_at ? new Date(row.created_at).toLocaleString() : 'N/A'
+    }));
+
+    // Generate Excel sheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Submissions");
+
+    // Download the Excel file
+    XLSX.writeFile(workbook, "Registration_Details.xlsx");
+};
+
+// 10. Handle Logout
+logoutBtn.addEventListener('click', () => {
+    sessionStorage.removeItem('adminLoggedIn');
+    dashboardContainer.classList.add('hidden');
+    loginFormContainer.classList.remove('hidden');
+    adminLoginForm.reset();
+});
