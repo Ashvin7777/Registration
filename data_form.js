@@ -1,144 +1,93 @@
-// Completely rewritten to use LocalStorage Architecture (Offline Support)
-let formEntries = JSON.parse(localStorage.getItem('form_data_entries')) || [];
+// 1. Initialize Supabase Client
+const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_MkLb7iKW7LLv5zfrQqgRSA_Mj-C1BbH";
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 1. DATA CLEANUP - Remove any existing duplicates from storage on load (Phone-Based)
-const cleanExistingData = () => {
-    const map = new Map();
-    formEntries.forEach(entry => {
-        const phone = String(entry.phone || '').trim();
-        if (!phone) return;
-        
-        if (!map.has(phone)) {
-            map.set(phone, entry);
-        } else {
-            // Keep the one with more information (non-empty fields)
-            const existing = map.get(phone);
-            const currentScore = Object.values(entry).filter(v => v && v !== '-').length;
-            const existingScore = Object.values(existing).filter(v => v && v !== '-').length;
-            
-            if (currentScore >= existingScore) {
-                map.set(phone, entry);
-            }
-        }
-    });
-    
-    const unique = Array.from(map.values());
-    if (unique.length !== formEntries.length) {
-        formEntries = unique;
-        localStorage.setItem('form_data_entries', JSON.stringify(formEntries));
-        console.log(`Cleaned up duplicates. Unique records: ${formEntries.length}`);
+// 2. DOM Elements
+const form = document.getElementById('dataEntryForm');
+const dobInput = document.getElementById('dob');
+const ageInput = document.getElementById('age');
+const successToast = document.getElementById('successMessage');
+const duplicateToast = document.getElementById('duplicateMessage');
+
+// 3. Auto-Calculate Age based on Date of Birth
+dobInput.addEventListener('change', () => {
+    if (!dobInput.value) {
+        ageInput.value = '';
+        return;
     }
-};
-cleanExistingData();
+    const birthDate = new Date(dobInput.value);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    // Adjust age if birthday hasn't occurred yet this year
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    
+    ageInput.value = age >= 0 ? age : '';
+});
 
-document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('dataEntryForm');
-    const toast = document.getElementById('successMessage');
-    const duplicateToast = document.getElementById('duplicateMessage');
-    const dobInput = document.getElementById('dob');
-    const ageInput = document.getElementById('age');
-    const phoneInput = document.getElementById('phone');
+// Helper function to show toasts
+function showToast(toastElement) {
+    toastElement.classList.remove('hidden');
+    // Hide it after 4 seconds
+    setTimeout(() => {
+        toastElement.classList.add('hidden');
+    }, 4000);
+}
 
-    // Phone Number Input Guard (Limit to 10 digits only)
-    phoneInput.addEventListener('input', (e) => {
-        // Remove non-digit characters
-        let val = e.target.value.replace(/\D/g, '');
-        
-        // Limit to 10 digits
-        if (val.length > 10) {
-            val = val.substring(0, 10);
-        }
-        
-        e.target.value = val;
-    });
+// 4. Handle Form Submission
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-    // Automatic Age Calculation
-    dobInput.addEventListener('change', () => {
-        if (!dobInput.value) return;
-        
-        const birthDate = new Date(dobInput.value);
-        const today = new Date();
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        
-        if (age >= 0) {
-            ageInput.value = age;
-        } else {
-            ageInput.value = '';
-        }
-    });
+    // Get input values
+    const fullName = document.getElementById('fullName').value;
+    const fatherName = document.getElementById('fatherName').value;
+    const phone = document.getElementById('phone').value;
+    const dob = document.getElementById('dob').value;
+    const age = document.getElementById('age').value;
+    const gender = document.getElementById('gender').value;
 
-    form.addEventListener('submit', (e) => {
-        // Prevent default form submission via HTTP
-        e.preventDefault();
+    // Check if phone number already exists in Supabase to prevent duplicates
+    const { data: existingUser, error: checkError } = await supabase
+        .from('Registration') // Replace with your exact table name in Supabase
+        .select('phone_number')
+        .eq('phone_number', phone)
+        .maybeSingle();
 
-        // Get form data
-        const formData = new FormData(form);
-        const data = {
-            fullName: formData.get('fullName'),
-            fatherName: formData.get('fatherName'),
-            age: formData.get('age'),
-            dob: formData.get('dob'),
-            gender: formData.get('gender'),
-            phone: formData.get('phone'),
-            timestamp: new Date().toLocaleString()
-        };
+    if (checkError) {
+        console.error('Database check error:', checkError);
+    }
 
-        // 2. DUPLICATE PREVENTION - Check if Phone already exists
-        const isDuplicate = formEntries.some(entry => 
-            String(entry.phone || '').trim() === String(data.phone || '').trim()
-        );
+    if (existingUser) {
+        // Show duplicate toast and stop
+        showToast(duplicateToast);
+        return;
+    }
 
-        if (isDuplicate) {
-            // Show duplicate message
-            duplicateToast.classList.remove('hidden');
-            void duplicateToast.offsetWidth; // Force Reflow
-            duplicateToast.classList.add('show');
-            
-            setTimeout(() => {
-                duplicateToast.classList.remove('show');
-                setTimeout(() => { duplicateToast.classList.add('hidden'); }, 400);
-            }, 4000);
-            return;
-        }
+    // Insert new record into Supabase
+    const { data, error } = await supabase
+        .from('Registration') // Replace with your exact table name in Supabase
+        .insert([
+            {
+                full_name: fullName,
+                fathers_name: fatherName,
+                phone_number: phone,
+                date_of_birth: dob,
+                age: parseInt(age),
+                gender: gender
+            }
+        ]);
 
-        const btn = form.querySelector('.submit-btn');
-        const originalText = btn.innerHTML;
-        
-        btn.innerHTML = '<span>Processing...</span>';
-        btn.style.opacity = '0.8';
-        btn.disabled = true;
-
-        // Save locally
-        formEntries.push(data);
-        localStorage.setItem('form_data_entries', JSON.stringify(formEntries));
-        console.log("Form Saved to Browser LocalStorage Successfully:", data);
-
-        // Restore button smoothly
-        setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.style.opacity = '1';
-            btn.disabled = false;
-            
-            // Show toast message
-            toast.classList.remove('hidden');
-            void toast.offsetWidth; // Force Reflow
-            toast.classList.add('show');
-
-            // Reset form
-            form.reset();
-
-            // Hide toast after 4 seconds
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    toast.classList.add('hidden');
-                }, 400); 
-            }, 4000);
-        }, 600);
-    });
+    if (error) {
+        console.error('Error inserting data:', error);
+        alert('Something went wrong. Please try again.');
+    } else {
+        // Show success toast and reset form
+        showToast(successToast);
+        form.reset();
+        ageInput.value = ''; // Clear age read-only field
+    }
 });
