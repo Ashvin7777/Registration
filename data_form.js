@@ -1,7 +1,7 @@
 // 1. Initialize Supabase Client
-const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_MkLb7iKW7LLv5zfrQqgRSA_Mj-C1BbH";
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // 2. DOM Elements
 const form = document.getElementById('dataEntryForm');
@@ -51,8 +51,8 @@ form.addEventListener('submit', async (e) => {
     const gender = document.getElementById('gender').value;
 
     // Check if phone number already exists in Supabase to prevent duplicates
-    const { data: existingUser, error: checkError } = await supabase
-        .from('Registration') // Replace with your exact table name in Supabase
+    const { data: existingUser, error: checkError } = await supabaseClient
+        .from('Registration') // Matches your table name
         .select('phone_number')
         .eq('phone_number', phone)
         .maybeSingle();
@@ -62,14 +62,13 @@ form.addEventListener('submit', async (e) => {
     }
 
     if (existingUser) {
-        // Show duplicate toast and stop
         showToast(duplicateToast);
         return;
     }
 
     // Insert new record into Supabase
-    const { data, error } = await supabase
-        .from('Registration') // Replace with your exact table name in Supabase
+    const { data, error } = await supabaseClient
+        .from('Registration')
         .insert([
             {
                 full_name: fullName,
@@ -85,7 +84,6 @@ form.addEventListener('submit', async (e) => {
         console.error('Error inserting data:', error);
         alert('Something went wrong. Please try again.');
     } else {
-        // Show success toast and reset form
         showToast(successToast);
         form.reset();
         ageInput.value = ''; // Clear age read-only field
