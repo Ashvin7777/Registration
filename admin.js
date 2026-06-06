@@ -1,7 +1,7 @@
 // 1. Initialize Supabase Client
-const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://vrjnxbcxmtmascpryykl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_MkLb7iKW7LLv5zfrQqgRSA_Mj-C1BbH";
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Credentials for Admin Portal
 const ADMIN_USERNAME = "admin";
@@ -52,10 +52,10 @@ async function showDashboard() {
 
 // 6. Fetch Data from Supabase
 async function fetchRegistrations() {
-    const { data, error } = await supabase
-        .from('Registration') // Replace with your exact table name in Supabase
+    const { data, error } = await supabaseClient
+        .from('Registration')
         .select('*')
-        .order('created_at', { ascending: false }); // Show newest first
+        .order('created_at', { ascending: false });
 
     if (error) {
         console.error('Error fetching registrations:', error);
@@ -77,7 +77,6 @@ function renderTable(dataList) {
     }
 
     dataList.forEach((row, index) => {
-        // Formating the submission date
         const submissionDate = row.created_at 
             ? new Date(row.created_at).toLocaleString() 
             : 'N/A';
@@ -88,7 +87,7 @@ function renderTable(dataList) {
                 <td>${row.full_name}</td>
                 <td>${row.fathers_name}</td>
                 <td>${row.age}</td>
-                <td class="capitalize">${row.date_of_birth}</td>
+                <td>${row.date_of_birth}</td>
                 <td class="capitalize">${row.gender}</td>
                 <td>${row.phone_number}</td>
                 <td>${submissionDate}</td>
@@ -128,7 +127,6 @@ window.exportFormDataToExcel = function() {
         return;
     }
 
-    // Format data specifically for Excel sheet columns
     const excelData = allRegistrations.map((row, index) => ({
         "Serial No.": index + 1,
         "Full Name": row.full_name,
@@ -140,12 +138,9 @@ window.exportFormDataToExcel = function() {
         "Submitted At": row.created_at ? new Date(row.created_at).toLocaleString() : 'N/A'
     }));
 
-    // Generate Excel sheet
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Submissions");
-
-    // Download the Excel file
     XLSX.writeFile(workbook, "Registration_Details.xlsx");
 };
 
